@@ -62,15 +62,20 @@ gatherOutput ph h = work mempty
 getProcessOutput :: String -> App BS.ByteString
 getProcessOutput cmd = do
   Config filePath _ debugMode <- ask  
-  when debugMode $ liftIO $ putStrLn $ "Executing command: " <> cmd
+  when debugMode $ lift $ putStrLn $ "Executing command: " <> cmd
   (_, Just hStdOut, _, handle) <- lift $ createProcess (constructProcess filePath cmd)
   (_, output) <- lift $ gatherOutput handle hStdOut
   return output
 
 getLocalBranches :: App [BS.ByteString]
 getLocalBranches =  
-  getProcessOutput "git branch" >>=
-    return . filter ((/=) "master") . concat . fmap (filter ((/=) "*") . BS.words) . BS.lines
+  getProcessOutput "git branch -vv" >>=
+      return 
+    . filter ((/=) "master") 
+    . concat 
+    . fmap (take 1 . filter ((/=) "*") . BS.words) 
+    . filter (BS.isInfixOf "[") 
+    . BS.lines
 
 getRemoteBranchName :: BS.ByteString -> BS.ByteString -- origin/feature/test -> feature/test
 getRemoteBranchName = BS.intercalate "/" . drop 1 . BS.split '/'
@@ -78,7 +83,7 @@ getRemoteBranchName = BS.intercalate "/" . drop 1 . BS.split '/'
 getRemoteBranches :: App [BS.ByteString]
 getRemoteBranches =
   getProcessOutput "git branch -r" >>= 
-    return . filter ((/=) "master") . fmap getRemoteBranchName . BS.lines
+    return . filter ((/=) "master") . fmap getRemoteBranchName . filter (not . BS.isInfixOf "->") . BS.lines
 
 getRemote :: App [BS.ByteString]
 getRemote = getProcessOutput "git remote" >>= (return . BS.lines)
@@ -93,13 +98,13 @@ runApp = do
   Config _ shouldPrune debugMode <- ask
   case remotes of
     (remote:_) -> do
+      when shouldPrune (pruneRemoteBranches remote)
       localBranches <- getLocalBranches
       remoteBranches <- getRemoteBranches
       when debugMode $ do
         liftIO $ putStrLn $ "Local " <> show localBranches
         liftIO $ putStrLn $ "Remote " <> show remoteBranches
         liftIO $ putStrLn $ "Diff " <> show (localBranches \\ remoteBranches)
-      when shouldPrune (pruneRemoteBranches remote)
     [] ->
       liftIO $ putStrLn "Git Repository does not have a remote set up"
   
