@@ -62,7 +62,7 @@ gatherOutput ph h = work mempty
 getProcessOutput :: String -> App BS.ByteString
 getProcessOutput cmd = do
   Config filePath _ debugMode <- ask  
-  when debugMode $ lift $ putStrLn $ "Executing command: " <> cmd
+  when debugMode $ lift . putStrLn $ "Executing command: " <> cmd
   (_, Just hStdOut, _, handle) <- lift $ createProcess (constructProcess filePath cmd)
   (_, output) <- lift $ gatherOutput handle hStdOut
   return output
@@ -83,7 +83,11 @@ getRemoteBranchName = BS.intercalate "/" . drop 1 . BS.split '/'
 getRemoteBranches :: App [BS.ByteString]
 getRemoteBranches =
   getProcessOutput "git branch -r" >>= 
-    return . filter ((/=) "master") . fmap getRemoteBranchName . filter (not . BS.isInfixOf "->") . BS.lines
+      return 
+    . filter ((/=) "master") 
+    . fmap getRemoteBranchName 
+    . filter (not . BS.isInfixOf "->") 
+    . BS.lines
 
 getRemote :: App [BS.ByteString]
 getRemote = getProcessOutput "git remote" >>= (return . BS.lines)
@@ -101,12 +105,14 @@ runApp = do
       when shouldPrune (pruneRemoteBranches remote)
       localBranches <- getLocalBranches
       remoteBranches <- getRemoteBranches
-      when debugMode $ do
-        liftIO $ putStrLn $ "Local " <> show localBranches
-        liftIO $ putStrLn $ "Remote " <> show remoteBranches
-        liftIO $ putStrLn $ "Diff " <> show (localBranches \\ remoteBranches)
+      when debugMode $
+        mapM_ (lift . putStrLn)
+              [ "Local " <> show localBranches
+              , "Remote " <> show remoteBranches
+              , "Diff " <> show (localBranches \\ remoteBranches)
+              ] 
     [] ->
-      liftIO $ putStrLn "Git Repository does not have a remote set up"
+      lift $ putStrLn "Git Repository does not have a remote set up"
   
 main :: IO ()
 main = do
